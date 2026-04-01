@@ -1,10 +1,17 @@
 import os
 import re
 import requests
+import logging
 
 import telebot
 from telebot import types
 from dotenv import load_dotenv
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -14,7 +21,9 @@ if not BOT_TOKEN:
         "Не найден BOT_TOKEN. Создайте файл .env (или переменную окружения) по примеру .env.example."
     )
 
+logger.info("Initializing bot...")
 bot = telebot.TeleBot(BOT_TOKEN)
+logger.info("Bot initialized successfully")
 
 PRIVET_RE = re.compile(r"(?i)\bпривет\b")
 
@@ -32,6 +41,7 @@ def create_main_menu():
 
 @bot.message_handler(commands=["start"])
 def on_start(message):
+    logger.info(f"User {message.from_user.id} started bot")
     markup = create_main_menu()
     bot.send_message(
         message.chat.id,
@@ -69,6 +79,7 @@ def on_help(message):
 
 @bot.message_handler(func=lambda m: m.text == "🐱 Фото кота")
 def send_cat_photo(message):
+    logger.info(f"User {message.from_user.id} requested cat photo")
     try:
         bot.send_chat_action(message.chat.id, "upload_photo")
         response = requests.get("https://api.thecatapi.com/v1/images/search", timeout=10)
@@ -78,14 +89,18 @@ def send_cat_photo(message):
         if data and len(data) > 0:
             cat_url = data[0]["url"]
             bot.send_photo(message.chat.id, cat_url, caption="Вот твой котик! 🐱")
+            logger.info("Cat photo sent successfully")
         else:
             bot.reply_to(message, "Не удалось получить фото кота 😿")
+            logger.warning("Empty response from cat API")
     except Exception as e:
+        logger.error(f"Error getting cat photo: {e}")
         bot.reply_to(message, f"Ошибка при получении фото: {str(e)}")
 
 
 @bot.message_handler(func=lambda m: m.text == "💭 Факт о кошке")
 def send_cat_fact(message):
+    logger.info(f"User {message.from_user.id} requested cat fact")
     try:
         bot.send_chat_action(message.chat.id, "typing")
         response = requests.get("https://catfact.ninja/fact", timeout=10)
@@ -94,14 +109,18 @@ def send_cat_fact(message):
         
         if "fact" in data:
             bot.reply_to(message, f"💭 Факт о кошках:\n\n{data['fact']}")
+            logger.info("Cat fact sent successfully")
         else:
             bot.reply_to(message, "Не удалось получить факт 😿")
+            logger.warning("Empty response from cat fact API")
     except Exception as e:
+        logger.error(f"Error getting cat fact: {e}")
         bot.reply_to(message, f"Ошибка при получении факта: {str(e)}")
 
 
 @bot.message_handler(func=lambda m: m.text == "🐶 Факт о собаке")
 def send_dog_fact(message):
+    logger.info(f"User {message.from_user.id} requested dog fact")
     try:
         bot.send_chat_action(message.chat.id, "typing")
         response = requests.get("https://dogapi.dog/api/v2/facts", timeout=10)
@@ -111,14 +130,18 @@ def send_dog_fact(message):
         if "data" in data and len(data["data"]) > 0:
             fact = data["data"][0]["attributes"]["body"]
             bot.reply_to(message, f"🐶 Факт о собаках:\n\n{fact}")
+            logger.info("Dog fact sent successfully")
         else:
             bot.reply_to(message, "Не удалось получить факт 🐕")
+            logger.warning("Empty response from dog fact API")
     except Exception as e:
+        logger.error(f"Error getting dog fact: {e}")
         bot.reply_to(message, f"Ошибка при получении факта: {str(e)}")
 
 
 @bot.message_handler(func=lambda m: m.text == "🦊 Фото лисицы")
 def send_fox_photo(message):
+    logger.info(f"User {message.from_user.id} requested fox photo")
     try:
         bot.send_chat_action(message.chat.id, "upload_photo")
         response = requests.get("https://randomfox.ca/floof/", timeout=10)
@@ -128,9 +151,12 @@ def send_fox_photo(message):
         if "image" in data:
             fox_url = data["image"]
             bot.send_photo(message.chat.id, fox_url, caption="Вот твоя лисичка! 🦊")
+            logger.info("Fox photo sent successfully")
         else:
             bot.reply_to(message, "Не удалось получить фото лисы 🦊")
+            logger.warning("Empty response from fox API")
     except Exception as e:
+        logger.error(f"Error getting fox photo: {e}")
         bot.reply_to(message, f"Ошибка при получении фото: {str(e)}")
 
 
@@ -140,5 +166,11 @@ def on_privet_word(message):
 
 
 if __name__ == "__main__":
-    print("[info] Bot started. Polling...")
-    bot.infinity_polling()
+    logger.info("Bot started. Starting polling...")
+    try:
+        bot.infinity_polling(skip_pending=True)
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Bot crashed: {e}", exc_info=True)
+        raise
