@@ -193,7 +193,14 @@ def send_random_recipe_handler(message):
         
         if meal:
             is_fav = db.is_favorite(message.from_user.id, meal["idMeal"])
-            send_recipe_with_buttons(message.chat.id, meal, is_fav)
+            rating = db.get_rating(message.from_user.id, meal["idMeal"]) if is_fav else 0
+            send_recipe_with_buttons(
+                message.chat.id, 
+                meal, 
+                is_fav, 
+                rating=rating,
+                user_id=message.from_user.id
+            )
             logger.info("Random recipe sent successfully")
         else:
             bot.reply_to(message, "Не удалось получить рецепт 😿")
@@ -356,7 +363,14 @@ def search_by_name(message):
         if len(recipes) == 1:
             meal = recipes[0]
             is_fav = db.is_favorite(message.from_user.id, meal["idMeal"])
-            send_recipe_with_buttons(message.chat.id, meal, is_fav)
+            rating = db.get_rating(message.from_user.id, meal["idMeal"]) if is_fav else 0
+            send_recipe_with_buttons(
+                message.chat.id, 
+                meal, 
+                is_fav, 
+                rating=rating,
+                user_id=message.from_user.id
+            )
         else:
             markup = create_recipe_list_keyboard(recipes, "recipe")
             bot.send_message(
@@ -434,7 +448,14 @@ def show_recipe_details(call):
         
         if meal:
             is_fav = db.is_favorite(call.from_user.id, meal["idMeal"])
-            send_recipe_with_buttons(call.message.chat.id, meal, is_fav)
+            rating = db.get_rating(call.from_user.id, meal["idMeal"]) if is_fav else 0
+            send_recipe_with_buttons(
+                call.message.chat.id, 
+                meal, 
+                is_fav, 
+                rating=rating,
+                user_id=call.from_user.id
+            )
         else:
             bot.send_message(call.message.chat.id, "Рецепт не найден 😿")
     except Exception as e:
@@ -462,14 +483,17 @@ def add_to_favorites(call):
             if success:
                 bot.answer_callback_query(call.id, "✅ Добавлено в избранное!")
                 
-                markup = create_rating_keyboard(meal_id)
-                bot.send_message(
-                    call.message.chat.id,
-                    "⭐ *Оцените рецепт:*\n\nВыберите количество звезд:",
-                    reply_markup=markup,
-                    parse_mode="Markdown"
-                )
-                logger.info("Recipe added to favorites, asking for rating")
+                new_markup = create_recipe_buttons(meal_id, is_favorite=True, rating=0)
+                try:
+                    bot.edit_message_reply_markup(
+                        call.message.chat.id,
+                        call.message.message_id,
+                        reply_markup=new_markup
+                    )
+                except:
+                    pass
+                
+                logger.info("Recipe added to favorites")
             else:
                 bot.answer_callback_query(call.id, "⚠️ Рецепт уже в избранном", show_alert=True)
         else:
@@ -517,7 +541,14 @@ def send_another_random(call):
         
         if meal:
             is_fav = db.is_favorite(call.from_user.id, meal["idMeal"])
-            send_recipe_with_buttons(call.message.chat.id, meal, is_fav)
+            rating = db.get_rating(call.from_user.id, meal["idMeal"]) if is_fav else 0
+            send_recipe_with_buttons(
+                call.message.chat.id, 
+                meal, 
+                is_fav, 
+                rating=rating,
+                user_id=call.from_user.id
+            )
         else:
             bot.answer_callback_query(call.id, "Ошибка при загрузке", show_alert=True)
     except Exception as e:
@@ -545,13 +576,24 @@ def handle_rating(call):
         success = db.set_rating(call.from_user.id, meal_id, rating)
         
         if success:
-            stars = "⭐" * rating
-            bot.answer_callback_query(call.id, f"✅ Оценка {stars} сохранена!", show_alert=True)
+            filled = "⭐" * rating
+            empty = "☆" * (5 - rating)
+            bot.answer_callback_query(call.id, f"✅ Оценка {filled}{empty} сохранена!", show_alert=True)
             
             try:
                 bot.delete_message(call.message.chat.id, call.message.message_id)
             except:
                 pass
+            
+            meal = get_recipe_by_id(meal_id)
+            if meal:
+                send_recipe_with_buttons(
+                    call.message.chat.id,
+                    meal,
+                    is_favorite=True,
+                    rating=rating,
+                    user_id=call.from_user.id
+                )
             
             logger.info(f"Rating {rating} saved for recipe {meal_id}")
         else:

@@ -61,17 +61,31 @@ def create_favorites_menu():
     return markup
 
 
-def create_recipe_buttons(meal_id, is_favorite=False):
+def create_recipe_buttons(meal_id, is_favorite=False, rating=0):
     """Создает inline кнопки под рецептом"""
     markup = types.InlineKeyboardMarkup(row_width=2)
     
     if is_favorite:
         btn1 = types.InlineKeyboardButton("🗑️ Удалить", callback_data=f"remove_{meal_id}")
+        btn2 = types.InlineKeyboardButton("🔄 Еще рецепт", callback_data="random")
+        markup.add(btn1, btn2)
+        
+        if rating > 0:
+            btn_rating = types.InlineKeyboardButton(
+                f"{'⭐' * rating}{'☆' * (5-rating)} Изменить оценку",
+                callback_data=f"change_rating_{meal_id}"
+            )
+        else:
+            btn_rating = types.InlineKeyboardButton(
+                "☆☆☆☆☆ Оценить рецепт",
+                callback_data=f"change_rating_{meal_id}"
+            )
+        markup.add(btn_rating)
     else:
         btn1 = types.InlineKeyboardButton("⭐ В избранное", callback_data=f"fav_{meal_id}")
+        btn2 = types.InlineKeyboardButton("🔄 Еще рецепт", callback_data="random")
+        markup.add(btn1, btn2)
     
-    btn2 = types.InlineKeyboardButton("🔄 Еще рецепт", callback_data="random")
-    markup.add(btn1, btn2)
     return markup
 
 
@@ -126,19 +140,21 @@ def create_recipe_list_keyboard(recipes, prefix="recipe"):
     return markup
 
 
-def create_rating_keyboard(meal_id):
-    """Создает клавиатуру для выбора рейтинга"""
-    markup = types.InlineKeyboardMarkup(row_width=5)
+def create_rating_keyboard(meal_id, current_rating=0):
+    """Создает клавиатуру для выбора рейтинга с визуализацией"""
+    markup = types.InlineKeyboardMarkup(row_width=1)
     
-    buttons = []
-    for i in range(1, 6):
+    for rating in range(5, 0, -1):
+        filled = "⭐" * rating
+        empty = "☆" * (5 - rating)
+        label = f"{rating} {filled}{empty}"
+        
         btn = types.InlineKeyboardButton(
-            f"{'⭐' * i}",
-            callback_data=f"rate_{meal_id}_{i}"
+            label,
+            callback_data=f"rate_{meal_id}_{rating}"
         )
-        buttons.append(btn)
+        markup.add(btn)
     
-    markup.row(*buttons)
     return markup
 
 
