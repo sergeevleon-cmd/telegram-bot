@@ -2,14 +2,26 @@ import os
 import re
 import requests
 import logging
+from logging.handlers import RotatingFileHandler
 
 import telebot
 from telebot import types
 from dotenv import load_dotenv
 
+os.makedirs("logs", exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        RotatingFileHandler(
+            "logs/bot.log",
+            maxBytes=5*1024*1024,
+            backupCount=3,
+            encoding='utf-8'
+        )
+    ]
 )
 logger = logging.getLogger(__name__)
 
