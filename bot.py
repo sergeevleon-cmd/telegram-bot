@@ -28,7 +28,8 @@ from keyboards import (
     create_categories_keyboard,
     create_areas_keyboard,
     create_recipe_list_keyboard,
-    create_favorite_recipe_buttons
+    create_favorite_recipe_buttons,
+    create_rating_keyboard
 )
 
 os.makedirs("logs", exist_ok=True)
@@ -85,11 +86,15 @@ logger.info("Database initialized successfully")
 user_states = {}
 
 
-def send_recipe_with_buttons(chat_id, meal, is_favorite=False):
+def send_recipe_with_buttons(chat_id, meal, is_favorite=False, rating=0, user_id=None):
     """Отправляет рецепт с кнопками"""
     try:
-        recipe_text = format_recipe_text(meal)
-        markup = create_recipe_buttons(meal["idMeal"], is_favorite)
+        recipe_text = format_recipe_text(meal, rating=rating)
+        
+        if is_favorite and user_id:
+            markup = create_favorite_recipe_buttons(meal["idMeal"], rating)
+        else:
+            markup = create_recipe_buttons(meal["idMeal"], is_favorite)
         
         bot.send_photo(
             chat_id,
@@ -277,18 +282,27 @@ def show_favorites(message):
             parse_mode="Markdown"
         )
         
-        for meal_id, meal_name, meal_thumb, added_at in favorites:
+        for meal_id, meal_name, meal_thumb, added_at, rating in favorites:
             meal = get_recipe_by_id(meal_id)
             if meal:
-                send_recipe_with_buttons(message.chat.id, meal, is_favorite=True)
+                send_recipe_with_buttons(
+                    message.chat.id, 
+                    meal, 
+                    is_favorite=True, 
+                    rating=rating,
+                    user_id=message.from_user.id
+                )
             else:
-                markup = types.InlineKeyboardMarkup()
-                btn = types.InlineKeyboardButton("🗑️ Удалить", callback_data=f"remove_{meal_id}")
-                markup.add(btn)
+                markup = create_favorite_recipe_buttons(meal_id, rating)
+                caption = f"🍽️ *{meal_name}*\n\n"
+                if rating > 0:
+                    caption += f"⭐ Ваша оценка: {'⭐' * rating}\n\n"
+                caption += "_Детали недоступны_"
+                
                 bot.send_photo(
                     message.chat.id,
                     meal_thumb,
-                    caption=f"🍽️ *{meal_name}*\n\n_Детали недоступны_",
+                    caption=caption,
                     parse_mode="Markdown",
                     reply_markup=markup
                 )
@@ -446,15 +460,16 @@ def add_to_favorites(call):
             )
             
             if success:
-                bot.answer_callback_query(call.id, "✅ Добавлено в избранное!", show_alert=True)
+                bot.answer_callback_query(call.id, "✅ Добавлено в избранное!")
                 
-                new_markup = create_recipe_buttons(meal_id, is_favorite=True)
-                bot.edit_message_reply_markup(
+                markup = create_rating_keyboard(meal_id)
+                bot.send_message(
                     call.message.chat.id,
-                    call.message.message_id,
-                    reply_markup=new_markup
+                    "⭐ *Оцените рецепт:*\n\nВыберите количество звезд:",
+                    reply_markup=markup,
+                    parse_mode="Markdown"
                 )
-                logger.info("Recipe added to favorites")
+                logger.info("Recipe added to favorites, asking for rating")
             else:
                 bot.answer_callback_query(call.id, "⚠️ Рецепт уже в избранном", show_alert=True)
         else:
@@ -517,6 +532,52 @@ def back_to_favorites(call):
         call.message.chat.id,
         "⭐ Используйте кнопку '📋 Показать избранное' для просмотра"
     )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
+def handle_rating(call):
+    parts = call.data.split("_")
+    meal_id = parts[1]
+    rating = int(parts[2])
+    logger.info(f"User {call.from_user.id} rated recipe {meal_id} with {rating} stars")
+    
+    try:
+        success = db.set_rating(call.from_user.id, meal_id, rating)
+        
+        if success:
+            stars = "⭐" * rating
+            bot.answer_callback_query(call.id, f"✅ Оценка {stars} сохранена!", show_alert=True)
+            
+            try:
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            except:
+                pass
+            
+            logger.info(f"Rating {rating} saved for recipe {meal_id}")
+        else:
+            bot.answer_callback_query(call.id, "⚠️ Ошибка при сохранении оценки", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error saving rating: {e}")
+        bot.answer_callback_query(call.id, "Ошибка", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("change_rating_"))
+def change_rating(call):
+    meal_id = call.data.replace("change_rating_", "")
+    logger.info(f"User {call.from_user.id} wants to change rating for {meal_id}")
+    
+    try:
+        bot.answer_callback_query(call.id)
+        markup = create_rating_keyboard(meal_id)
+        bot.send_message(
+            call.message.chat.id,
+            "⭐ *Выберите новую оценку:*",
+            reply_markup=markup,
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Error changing rating: {e}")
+        bot.answer_callback_query(call.id, "Ошибка", show_alert=True)
 
 
 if __name__ == "__main__":

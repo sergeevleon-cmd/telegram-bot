@@ -255,7 +255,7 @@ def get_recipe_by_id(meal_id):
         return None
 
 
-def format_recipe_text(meal, include_instructions=False):
+def format_recipe_text(meal, include_instructions=False, rating=0):
     """Форматирует текст рецепта для отправки на русском языке"""
     if not meal:
         return "Рецепт не найден"
@@ -266,7 +266,12 @@ def format_recipe_text(meal, include_instructions=False):
     
     text = f"🍽️ *{meal_name_ru}*\n\n"
     text += f"📂 Категория: {category_ru}\n"
-    text += f"🌍 Кухня: {area_ru}\n\n"
+    text += f"🌍 Кухня: {area_ru}\n"
+    
+    if rating > 0:
+        text += f"⭐ Ваша оценка: {'⭐' * rating}\n"
+    
+    text += "\n"
     
     ingredients = []
     for i in range(1, 21):
@@ -289,5 +294,8 @@ def format_recipe_text(meal, include_instructions=False):
             instructions = instructions[:1000] + "..."
         instructions_ru = translate_to_russian(instructions)
         text += f"\n\n📝 *Инструкция:*\n{instructions_ru}"
+    
+    if meal.get("strYoutube"):
+        text += f"\n\n🎥 [Видеорецепт]({meal['strYoutube']})"
     
     return text

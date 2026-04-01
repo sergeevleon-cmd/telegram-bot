@@ -27,10 +27,22 @@ class Database:
                     meal_id TEXT NOT NULL,
                     meal_name TEXT,
                     meal_thumb TEXT,
+                    rating INTEGER DEFAULT 0,
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(user_id, meal_id)
                 )
             """)
+            
+            cursor.execute("""
+                SELECT COUNT(*) FROM pragma_table_info('favorites') 
+                WHERE name='rating'
+            """)
+            
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    ALTER TABLE favorites ADD COLUMN rating INTEGER DEFAULT 0
+                """)
+                logger.info("Added rating column to existing table")
             
             conn.commit()
             conn.close()
@@ -80,16 +92,16 @@ class Database:
             return False
     
     def get_favorites(self, user_id):
-        """Получает все избранные рецепты пользователя"""
+        """Получает все избранные рецепты пользователя, отсортированные по рейтингу"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT meal_id, meal_name, meal_thumb, added_at
+                SELECT meal_id, meal_name, meal_thumb, added_at, rating
                 FROM favorites
                 WHERE user_id = ?
-                ORDER BY added_at DESC
+                ORDER BY rating DESC, added_at DESC
             """, (user_id,))
             
             results = cursor.fetchall()
@@ -118,6 +130,46 @@ class Database:
         except Exception as e:
             logger.error(f"Error checking favorite: {e}")
             return False
+    
+    def set_rating(self, user_id, meal_id, rating):
+        """Устанавливает рейтинг для рецепта"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE favorites
+                SET rating = ?
+                WHERE user_id = ? AND meal_id = ?
+            """, (rating, user_id, meal_id))
+            
+            conn.commit()
+            affected = cursor.rowcount
+            conn.close()
+            
+            return affected > 0
+        except Exception as e:
+            logger.error(f"Error setting rating: {e}")
+            return False
+    
+    def get_rating(self, user_id, meal_id):
+        """Получает рейтинг рецепта"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT rating FROM favorites
+                WHERE user_id = ? AND meal_id = ?
+            """, (user_id, meal_id))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            return result[0] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting rating: {e}")
+            return 0
     
     def clear_favorites(self, user_id):
         """Очищает все избранные рецепты пользователя"""
