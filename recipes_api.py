@@ -5,11 +5,128 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.themealdb.com/api/json/v1/1"
 
+TRANSLATION_CACHE = {}
+
+MANUAL_TRANSLATIONS = {
+    "Dessert": "Десерт",
+    "Chicken": "Курица",
+    "Beef": "Говядина",
+    "Pork": "Свинина",
+    "Seafood": "Морепродукты",
+    "Vegetarian": "Вегетарианское",
+    "Breakfast": "Завтрак",
+    "Pasta": "Паста",
+    "Side": "Гарнир",
+    "Starter": "Закуска",
+    "Vegan": "Веганское",
+    "Lamb": "Баранина",
+    "Miscellaneous": "Разное",
+    "Goat": "Козлятина",
+    
+    "Italian": "Итальянская",
+    "Chinese": "Китайская",
+    "Japanese": "Японская",
+    "American": "Американская",
+    "British": "Британская",
+    "French": "Французская",
+    "Indian": "Индийская",
+    "Mexican": "Мексиканская",
+    "Thai": "Тайская",
+    "Vietnamese": "Вьетнамская",
+    "Greek": "Греческая",
+    "Spanish": "Испанская",
+    "Turkish": "Турецкая",
+    "Russian": "Русская",
+    "Canadian": "Канадская",
+    "Croatian": "Хорватская",
+    "Dutch": "Голландская",
+    "Egyptian": "Египетская",
+    "Filipino": "Филиппинская",
+    "Irish": "Ирландская",
+    "Jamaican": "Ямайская",
+    "Kenyan": "Кенийская",
+    "Malaysian": "Малайзийская",
+    "Moroccan": "Марокканская",
+    "Polish": "Польская",
+    "Portuguese": "Португальская",
+    "Tunisian": "Тунисская",
+    "Ukrainian": "Украинская",
+    "Australian": "Австралийская",
+    
+    "cup": "чашка",
+    "cups": "чашки",
+    "tsp": "ч.л.",
+    "tbs": "ст.л.",
+    "tbsp": "ст.л.",
+    "tblsp": "ст.л.",
+    "tablespoon": "столовая ложка",
+    "teaspoon": "чайная ложка",
+    "oz": "унция",
+    "lb": "фунт",
+    "g": "г",
+    "kg": "кг",
+    "ml": "мл",
+    "l": "л",
+    "pinch": "щепотка",
+    "to taste": "по вкусу",
+    
+    "Butter": "Сливочное масло",
+    "Sugar": "Сахар",
+    "Flour": "Мука",
+    "Salt": "Соль",
+    "Pepper": "Перец",
+    "Egg": "Яйцо",
+    "Eggs": "Яйца",
+    "Milk": "Молоко",
+    "Water": "Вода",
+    "Oil": "Масло",
+    "Olive Oil": "Оливковое масло",
+    "Garlic": "Чеснок",
+    "Onion": "Лук",
+    "Tomato": "Помидор",
+    "Potato": "Картофель",
+    "Carrot": "Морковь",
+    "Cheese": "Сыр",
+    "Cream": "Сливки",
+    "Rice": "Рис",
+    "Chicken": "Курица",
+    "Beef": "Говядина",
+    "Pork": "Свинина",
+    "Fish": "Рыба",
+    "Lemon": "Лимон",
+    "Honey": "Мед",
+    "Vanilla": "Ваниль",
+    "Chocolate": "Шоколад",
+    "Cinnamon": "Корица",
+    "Ginger": "Имбирь",
+    "Soy Sauce": "Соевый соус",
+    "Vinegar": "Уксус",
+    "Bread": "Хлеб",
+    "Pasta": "Паста",
+    "Noodles": "Лапша",
+    "Coconut": "Кокос",
+    "Porridge oats": "Овсяные хлопья",
+    "Desiccated Coconut": "Кокосовая стружка",
+    "Plain Flour": "Пшеничная мука",
+    "Caster Sugar": "Сахарная пудра",
+    "Golden Syrup": "Золотой сироп",
+    "Bicarbonate Of Soda": "Пищевая сода",
+}
+
 
 def translate_to_russian(text):
-    """Переводит текст на русский язык через бесплатный API"""
+    """Переводит текст на русский язык через API или словарь"""
     if not text or not text.strip():
         return text
+    
+    text = text.strip()
+    
+    if text in TRANSLATION_CACHE:
+        return TRANSLATION_CACHE[text]
+    
+    if text in MANUAL_TRANSLATIONS:
+        TRANSLATION_CACHE[text] = MANUAL_TRANSLATIONS[text]
+        return MANUAL_TRANSLATIONS[text]
     
     try:
         url = "https://translate.googleapis.com/translate_a/single"
@@ -24,6 +141,8 @@ def translate_to_russian(text):
         if response.status_code == 200:
             result = response.json()
             translated = result[0][0][0]
+            TRANSLATION_CACHE[text] = translated
+            logger.info(f"Translated: '{text}' -> '{translated}'")
             return translated
         return text
     except Exception as e:
