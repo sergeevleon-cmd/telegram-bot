@@ -6,6 +6,31 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://www.themealdb.com/api/json/v1/1"
 
 
+def translate_to_russian(text):
+    """Переводит текст на русский язык через бесплатный API"""
+    if not text or not text.strip():
+        return text
+    
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": "en",
+            "tl": "ru",
+            "dt": "t",
+            "q": text
+        }
+        response = requests.get(url, params=params, timeout=5)
+        if response.status_code == 200:
+            result = response.json()
+            translated = result[0][0][0]
+            return translated
+        return text
+    except Exception as e:
+        logger.warning(f"Translation failed for '{text[:50]}': {e}")
+        return text
+
+
 def get_random_recipe():
     """Получает случайный рецепт"""
     try:
@@ -112,20 +137,26 @@ def get_recipe_by_id(meal_id):
 
 
 def format_recipe_text(meal, include_instructions=False):
-    """Форматирует текст рецепта для отправки"""
+    """Форматирует текст рецепта для отправки на русском языке"""
     if not meal:
         return "Рецепт не найден"
     
-    text = f"🍽️ *{meal['strMeal']}*\n\n"
-    text += f"📂 Категория: {meal.get('strCategory', 'N/A')}\n"
-    text += f"🌍 Кухня: {meal.get('strArea', 'N/A')}\n\n"
+    meal_name_ru = translate_to_russian(meal['strMeal'])
+    category_ru = translate_to_russian(meal.get('strCategory', 'N/A'))
+    area_ru = translate_to_russian(meal.get('strArea', 'N/A'))
+    
+    text = f"🍽️ *{meal_name_ru}*\n\n"
+    text += f"📂 Категория: {category_ru}\n"
+    text += f"🌍 Кухня: {area_ru}\n\n"
     
     ingredients = []
     for i in range(1, 21):
         ingredient = meal.get(f"strIngredient{i}")
         measure = meal.get(f"strMeasure{i}")
         if ingredient and ingredient.strip():
-            ingredients.append(f"• {measure} {ingredient}".strip())
+            ingredient_ru = translate_to_russian(ingredient)
+            measure_ru = translate_to_russian(measure) if measure and measure.strip() else ""
+            ingredients.append(f"• {measure_ru} {ingredient_ru}".strip())
     
     if ingredients:
         text += "*Ингредиенты:*\n"
@@ -135,8 +166,9 @@ def format_recipe_text(meal, include_instructions=False):
     
     if include_instructions and meal.get("strInstructions"):
         instructions = meal["strInstructions"]
-        if len(instructions) > 500:
-            instructions = instructions[:500] + "..."
-        text += f"\n\n📝 *Инструкция:*\n{instructions}"
+        if len(instructions) > 1000:
+            instructions = instructions[:1000] + "..."
+        instructions_ru = translate_to_russian(instructions)
+        text += f"\n\n📝 *Инструкция:*\n{instructions_ru}"
     
     return text

@@ -17,7 +17,8 @@ from recipes_api import (
     get_areas,
     get_recipes_by_area,
     get_recipe_by_id,
-    format_recipe_text
+    format_recipe_text,
+    translate_to_russian
 )
 from keyboards import (
     create_main_menu,
@@ -436,10 +437,11 @@ def add_to_favorites(call):
         meal = get_recipe_by_id(meal_id)
         
         if meal:
+            meal_name_ru = translate_to_russian(meal["strMeal"])
             success = db.add_favorite(
                 call.from_user.id,
                 meal["idMeal"],
-                meal["strMeal"],
+                meal_name_ru,
                 meal["strMealThumb"]
             )
             

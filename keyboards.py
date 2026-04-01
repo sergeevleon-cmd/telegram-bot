@@ -1,4 +1,33 @@
 from telebot import types
+import requests
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def translate_to_russian(text):
+    """Переводит текст на русский язык"""
+    if not text or not text.strip():
+        return text
+    
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": "en",
+            "tl": "ru",
+            "dt": "t",
+            "q": text
+        }
+        response = requests.get(url, params=params, timeout=5)
+        if response.status_code == 200:
+            result = response.json()
+            translated = result[0][0][0]
+            return translated
+        return text
+    except Exception as e:
+        logger.warning(f"Translation failed: {e}")
+        return text
 
 
 def create_main_menu():
@@ -47,13 +76,15 @@ def create_recipe_buttons(meal_id, is_favorite=False):
 
 
 def create_categories_keyboard(categories):
-    """Создает inline клавиатуру с категориями"""
+    """Создает inline клавиатуру с категориями на русском"""
     markup = types.InlineKeyboardMarkup(row_width=2)
     
     for cat in categories[:12]:
+        category_name = cat["strCategory"]
+        category_name_ru = translate_to_russian(category_name)
         btn = types.InlineKeyboardButton(
-            cat["strCategory"],
-            callback_data=f"cat_{cat['strCategory']}"
+            category_name_ru,
+            callback_data=f"cat_{category_name}"
         )
         markup.add(btn)
     
@@ -61,14 +92,16 @@ def create_categories_keyboard(categories):
 
 
 def create_areas_keyboard(areas):
-    """Создает inline клавиатуру с кухнями мира"""
+    """Создает inline клавиатуру с кухнями мира на русском"""
     markup = types.InlineKeyboardMarkup(row_width=3)
     
     buttons = []
     for area in areas[:18]:
+        area_name = area["strArea"]
+        area_name_ru = translate_to_russian(area_name)
         btn = types.InlineKeyboardButton(
-            area["strArea"],
-            callback_data=f"area_{area['strArea']}"
+            area_name_ru,
+            callback_data=f"area_{area_name}"
         )
         buttons.append(btn)
     
@@ -79,12 +112,13 @@ def create_areas_keyboard(areas):
 
 
 def create_recipe_list_keyboard(recipes, prefix="recipe"):
-    """Создает inline клавиатуру со списком рецептов"""
+    """Создает inline клавиатуру со списком рецептов на русском"""
     markup = types.InlineKeyboardMarkup(row_width=1)
     
     for recipe in recipes[:10]:
+        recipe_name_ru = translate_to_russian(recipe["strMeal"])
         btn = types.InlineKeyboardButton(
-            recipe["strMeal"],
+            recipe_name_ru,
             callback_data=f"{prefix}_{recipe['idMeal']}"
         )
         markup.add(btn)
