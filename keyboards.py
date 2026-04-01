@@ -62,29 +62,32 @@ def create_favorites_menu():
 
 
 def create_recipe_buttons(meal_id, is_favorite=False, rating=0):
-    """Создает inline кнопки под рецептом"""
-    markup = types.InlineKeyboardMarkup(row_width=2)
+    """Создает inline кнопки под рецептом с рейтингом в одну строку"""
+    markup = types.InlineKeyboardMarkup()
     
     if is_favorite:
+        rating_buttons = []
+        for r in range(1, 6):
+            if r <= rating:
+                label = "⭐"
+            else:
+                label = "☆"
+            
+            btn = types.InlineKeyboardButton(
+                label,
+                callback_data=f"rate_{meal_id}_{r}"
+            )
+            rating_buttons.append(btn)
+        
+        markup.row(*rating_buttons)
+        
         btn1 = types.InlineKeyboardButton("🗑️ Удалить", callback_data=f"remove_{meal_id}")
         btn2 = types.InlineKeyboardButton("🔄 Еще рецепт", callback_data="random")
-        markup.add(btn1, btn2)
-        
-        if rating > 0:
-            btn_rating = types.InlineKeyboardButton(
-                f"{'⭐' * rating}{'☆' * (5-rating)} Изменить оценку",
-                callback_data=f"change_rating_{meal_id}"
-            )
-        else:
-            btn_rating = types.InlineKeyboardButton(
-                "☆☆☆☆☆ Оценить рецепт",
-                callback_data=f"change_rating_{meal_id}"
-            )
-        markup.add(btn_rating)
+        markup.row(btn1, btn2)
     else:
         btn1 = types.InlineKeyboardButton("⭐ В избранное", callback_data=f"fav_{meal_id}")
         btn2 = types.InlineKeyboardButton("🔄 Еще рецепт", callback_data="random")
-        markup.add(btn1, btn2)
+        markup.row(btn1, btn2)
     
     return markup
 

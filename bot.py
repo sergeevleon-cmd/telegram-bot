@@ -578,22 +578,17 @@ def handle_rating(call):
         if success:
             filled = "⭐" * rating
             empty = "☆" * (5 - rating)
-            bot.answer_callback_query(call.id, f"✅ Оценка {filled}{empty} сохранена!", show_alert=True)
+            bot.answer_callback_query(call.id, f"✅ Оценка {filled}{empty} сохранена!")
             
+            new_markup = create_recipe_buttons(meal_id, is_favorite=True, rating=rating)
             try:
-                bot.delete_message(call.message.chat.id, call.message.message_id)
+                bot.edit_message_reply_markup(
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=new_markup
+                )
             except:
                 pass
-            
-            meal = get_recipe_by_id(meal_id)
-            if meal:
-                send_recipe_with_buttons(
-                    call.message.chat.id,
-                    meal,
-                    is_favorite=True,
-                    rating=rating,
-                    user_id=call.from_user.id
-                )
             
             logger.info(f"Rating {rating} saved for recipe {meal_id}")
         else:
