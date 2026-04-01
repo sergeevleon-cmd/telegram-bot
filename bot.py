@@ -1,5 +1,4 @@
 import os
-import re
 import requests
 import logging
 from logging.handlers import RotatingFileHandler
@@ -8,6 +7,28 @@ import telebot
 from telebot import types
 from telebot import apihelper
 from dotenv import load_dotenv
+
+from database import Database
+from recipes_api import (
+    get_random_recipe,
+    search_recipe_by_name,
+    get_categories,
+    get_recipes_by_category,
+    get_areas,
+    get_recipes_by_area,
+    get_recipe_by_id,
+    format_recipe_text
+)
+from keyboards import (
+    create_main_menu,
+    create_search_menu,
+    create_favorites_menu,
+    create_recipe_buttons,
+    create_categories_keyboard,
+    create_areas_keyboard,
+    create_recipe_list_keyboard,
+    create_favorite_recipe_buttons
+)
 
 os.makedirs("logs", exist_ok=True)
 
@@ -56,49 +77,41 @@ logger.info("Initializing bot...")
 bot = telebot.TeleBot(BOT_TOKEN)
 logger.info("Bot initialized successfully")
 
-PRIVET_RE = re.compile(r"(?i)\bпривет\b")
+logger.info("Initializing database...")
+db = Database()
+logger.info("Database initialized successfully")
+
+user_states = {}
 
 
-def translate_to_russian(text):
-    """Переводит текст на русский язык через бесплатный API"""
+def send_recipe_with_buttons(chat_id, meal, is_favorite=False):
+    """Отправляет рецепт с кнопками"""
     try:
-        url = "https://translate.googleapis.com/translate_a/single"
-        params = {
-            "client": "gtx",
-            "sl": "en",
-            "tl": "ru",
-            "dt": "t",
-            "q": text
-        }
-        response = requests.get(url, params=params, timeout=5)
-        if response.status_code == 200:
-            result = response.json()
-            translated = result[0][0][0]
-            return translated
-        return text
+        recipe_text = format_recipe_text(meal)
+        markup = create_recipe_buttons(meal["idMeal"], is_favorite)
+        
+        bot.send_photo(
+            chat_id,
+            meal["strMealThumb"],
+            caption=recipe_text,
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
+        return True
     except Exception as e:
-        logger.warning(f"Translation failed: {e}")
-        return text
-
-
-def create_main_menu():
-    """Создает главное меню с кнопками"""
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1 = types.KeyboardButton("🐱 Фото кота")
-    btn2 = types.KeyboardButton("🐶 Факт о собаке")
-    btn3 = types.KeyboardButton("🦊 Фото лисицы")
-    btn4 = types.KeyboardButton("💭 Факт о кошке")
-    markup.add(btn1, btn2, btn3, btn4)
-    return markup
+        logger.error(f"Error sending recipe: {e}")
+        return False
 
 
 @bot.message_handler(commands=["start"])
 def on_start(message):
     logger.info(f"User {message.from_user.id} started bot")
+    user_states[message.from_user.id] = None
     markup = create_main_menu()
     bot.send_message(
         message.chat.id,
-        "Привет! 🎉\n\nЯ бот с милыми животными!\n"
+        "Привет! 🍽️\n\n"
+        "Я бот для поиска рецептов!\n"
         "Выбери действие из меню ниже:",
         reply_markup=markup
     )
@@ -106,6 +119,7 @@ def on_start(message):
 
 @bot.message_handler(commands=["menu"])
 def on_menu(message):
+    user_states[message.from_user.id] = None
     markup = create_main_menu()
     bot.send_message(
         message.chat.id,
@@ -114,111 +128,393 @@ def on_menu(message):
     )
 
 
-@bot.message_handler(commands=["ping"])
-def on_ping(message):
-    bot.reply_to(message, "pong")
-
-
 @bot.message_handler(commands=["help"])
 def on_help(message):
     bot.reply_to(
         message,
-        "/start - запустить бота и показать меню\n"
-        "/menu - показать меню\n"
-        "/ping - проверка связи\n"
-        "/help - помощь"
+        "🍽️ *Бот для поиска рецептов*\n\n"
+        "/start - запустить бота\n"
+        "/menu - главное меню\n"
+        "/help - помощь\n\n"
+        "Используйте кнопки меню для навигации!",
+        parse_mode="Markdown"
     )
 
 
-@bot.message_handler(func=lambda m: m.text == "🐱 Фото кота")
-def send_cat_photo(message):
-    logger.info(f"User {message.from_user.id} requested cat photo")
+@bot.message_handler(func=lambda m: m.text == "🔍 Поиск рецептов")
+def show_search_menu(message):
+    logger.info(f"User {message.from_user.id} opened search menu")
+    user_states[message.from_user.id] = None
+    markup = create_search_menu()
+    bot.send_message(
+        message.chat.id,
+        "🔍 *Поиск рецептов*\n\nВыберите способ поиска:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == "⭐ Мои рецепты")
+def show_favorites_menu(message):
+    logger.info(f"User {message.from_user.id} opened favorites menu")
+    user_states[message.from_user.id] = None
+    markup = create_favorites_menu()
+    bot.send_message(
+        message.chat.id,
+        "⭐ *Мои рецепты*\n\nУправление избранными рецептами:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == "⬅️ Назад в меню")
+def back_to_main_menu(message):
+    user_states[message.from_user.id] = None
+    markup = create_main_menu()
+    bot.send_message(
+        message.chat.id,
+        "Главное меню:",
+        reply_markup=markup
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == "🎲 Случайный рецепт")
+def send_random_recipe_handler(message):
+    logger.info(f"User {message.from_user.id} requested random recipe")
     try:
         bot.send_chat_action(message.chat.id, "upload_photo")
-        response = requests.get("https://api.thecatapi.com/v1/images/search", timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        meal = get_random_recipe()
         
-        if data and len(data) > 0:
-            cat_url = data[0]["url"]
-            bot.send_photo(message.chat.id, cat_url, caption="Вот твой котик! 🐱")
-            logger.info("Cat photo sent successfully")
+        if meal:
+            is_fav = db.is_favorite(message.from_user.id, meal["idMeal"])
+            send_recipe_with_buttons(message.chat.id, meal, is_fav)
+            logger.info("Random recipe sent successfully")
         else:
-            bot.reply_to(message, "Не удалось получить фото кота 😿")
-            logger.warning("Empty response from cat API")
+            bot.reply_to(message, "Не удалось получить рецепт 😿")
+            logger.warning("Empty response from recipe API")
     except Exception as e:
-        logger.error(f"Error getting cat photo: {e}")
-        bot.reply_to(message, f"Ошибка при получении фото: {str(e)}")
+        logger.error(f"Error getting random recipe: {e}")
+        bot.reply_to(message, f"Ошибка при получении рецепта: {str(e)}")
 
 
-@bot.message_handler(func=lambda m: m.text == "💭 Факт о кошке")
-def send_cat_fact(message):
-    logger.info(f"User {message.from_user.id} requested cat fact")
+@bot.message_handler(func=lambda m: m.text == "📂 По категориям")
+def show_categories(message):
+    logger.info(f"User {message.from_user.id} requested categories")
     try:
         bot.send_chat_action(message.chat.id, "typing")
-        response = requests.get("https://catfact.ninja/fact", timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        categories = get_categories()
         
-        if "fact" in data:
-            fact_en = data['fact']
-            fact_ru = translate_to_russian(fact_en)
-            bot.reply_to(message, f"💭 Факт о кошках:\n\n{fact_ru}")
-            logger.info("Cat fact sent successfully")
+        if categories:
+            markup = create_categories_keyboard(categories)
+            bot.send_message(
+                message.chat.id,
+                "📂 *Выберите категорию:*",
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
+            logger.info("Categories sent successfully")
         else:
-            bot.reply_to(message, "Не удалось получить факт 😿")
-            logger.warning("Empty response from cat fact API")
+            bot.reply_to(message, "Не удалось получить категории 😿")
     except Exception as e:
-        logger.error(f"Error getting cat fact: {e}")
-        bot.reply_to(message, f"Ошибка при получении факта: {str(e)}")
+        logger.error(f"Error getting categories: {e}")
+        bot.reply_to(message, f"Ошибка: {str(e)}")
 
 
-@bot.message_handler(func=lambda m: m.text == "🐶 Факт о собаке")
-def send_dog_fact(message):
-    logger.info(f"User {message.from_user.id} requested dog fact")
+@bot.message_handler(func=lambda m: m.text == "🌍 По кухням мира")
+def show_areas(message):
+    logger.info(f"User {message.from_user.id} requested areas")
     try:
         bot.send_chat_action(message.chat.id, "typing")
-        response = requests.get("https://dogapi.dog/api/v2/facts", timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        areas = get_areas()
         
-        if "data" in data and len(data["data"]) > 0:
-            fact_en = data["data"][0]["attributes"]["body"]
-            fact_ru = translate_to_russian(fact_en)
-            bot.reply_to(message, f"🐶 Факт о собаках:\n\n{fact_ru}")
-            logger.info("Dog fact sent successfully")
+        if areas:
+            markup = create_areas_keyboard(areas)
+            bot.send_message(
+                message.chat.id,
+                "🌍 *Выберите кухню мира:*",
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
+            logger.info("Areas sent successfully")
         else:
-            bot.reply_to(message, "Не удалось получить факт 🐕")
-            logger.warning("Empty response from dog fact API")
+            bot.reply_to(message, "Не удалось получить список кухонь 😿")
     except Exception as e:
-        logger.error(f"Error getting dog fact: {e}")
-        bot.reply_to(message, f"Ошибка при получении факта: {str(e)}")
+        logger.error(f"Error getting areas: {e}")
+        bot.reply_to(message, f"Ошибка: {str(e)}")
 
 
-@bot.message_handler(func=lambda m: m.text == "🦊 Фото лисицы")
-def send_fox_photo(message):
-    logger.info(f"User {message.from_user.id} requested fox photo")
+@bot.message_handler(func=lambda m: m.text == "🔤 По названию")
+def ask_recipe_name(message):
+    logger.info(f"User {message.from_user.id} wants to search by name")
+    user_states[message.from_user.id] = "waiting_recipe_name"
+    bot.send_message(
+        message.chat.id,
+        "🔤 Введите название блюда (на английском):\n\n"
+        "Например: _pasta_, _chicken_, _cake_",
+        parse_mode="Markdown"
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == "📋 Показать избранное")
+def show_favorites(message):
+    logger.info(f"User {message.from_user.id} requested favorites")
     try:
-        bot.send_chat_action(message.chat.id, "upload_photo")
-        response = requests.get("https://randomfox.ca/floof/", timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        favorites = db.get_favorites(message.from_user.id)
         
-        if "image" in data:
-            fox_url = data["image"]
-            bot.send_photo(message.chat.id, fox_url, caption="Вот твоя лисичка! 🦊")
-            logger.info("Fox photo sent successfully")
-        else:
-            bot.reply_to(message, "Не удалось получить фото лисы 🦊")
-            logger.warning("Empty response from fox API")
+        if not favorites:
+            bot.send_message(
+                message.chat.id,
+                "⭐ У вас пока нет избранных рецептов.\n\n"
+                "Найдите рецепты через поиск и добавьте их в избранное!"
+            )
+            return
+        
+        bot.send_message(
+            message.chat.id,
+            f"⭐ *Ваши избранные рецепты* ({len(favorites)}):\n\n"
+            "Загружаю...",
+            parse_mode="Markdown"
+        )
+        
+        for meal_id, meal_name, meal_thumb, added_at in favorites:
+            meal = get_recipe_by_id(meal_id)
+            if meal:
+                send_recipe_with_buttons(message.chat.id, meal, is_favorite=True)
+            else:
+                markup = types.InlineKeyboardMarkup()
+                btn = types.InlineKeyboardButton("🗑️ Удалить", callback_data=f"remove_{meal_id}")
+                markup.add(btn)
+                bot.send_photo(
+                    message.chat.id,
+                    meal_thumb,
+                    caption=f"🍽️ *{meal_name}*\n\n_Детали недоступны_",
+                    parse_mode="Markdown",
+                    reply_markup=markup
+                )
+        
+        logger.info(f"Sent {len(favorites)} favorite recipes")
     except Exception as e:
-        logger.error(f"Error getting fox photo: {e}")
-        bot.reply_to(message, f"Ошибка при получении фото: {str(e)}")
+        logger.error(f"Error showing favorites: {e}")
+        bot.reply_to(message, f"Ошибка при получении избранного: {str(e)}")
 
 
-@bot.message_handler(func=lambda m: PRIVET_RE.search(m.text or ""))
-def on_privet_word(message):
-    bot.reply_to(message, "Привет-привет!")
+@bot.message_handler(func=lambda m: m.text == "🗑️ Очистить избранное")
+def clear_favorites(message):
+    logger.info(f"User {message.from_user.id} wants to clear favorites")
+    try:
+        count = db.clear_favorites(message.from_user.id)
+        
+        if count > 0:
+            bot.send_message(
+                message.chat.id,
+                f"🗑️ Удалено {count} рецептов из избранного"
+            )
+        else:
+            bot.send_message(
+                message.chat.id,
+                "У вас нет избранных рецептов"
+            )
+        
+        logger.info(f"Cleared {count} favorites")
+    except Exception as e:
+        logger.error(f"Error clearing favorites: {e}")
+        bot.reply_to(message, f"Ошибка: {str(e)}")
+
+
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "waiting_recipe_name")
+def search_by_name(message):
+    logger.info(f"User {message.from_user.id} searching for: {message.text}")
+    user_states[message.from_user.id] = None
+    
+    try:
+        bot.send_chat_action(message.chat.id, "typing")
+        recipes = search_recipe_by_name(message.text)
+        
+        if not recipes:
+            bot.send_message(
+                message.chat.id,
+                "😿 Рецепты не найдены.\n\n"
+                "Попробуйте другое название или используйте английский язык."
+            )
+            return
+        
+        if len(recipes) == 1:
+            meal = recipes[0]
+            is_fav = db.is_favorite(message.from_user.id, meal["idMeal"])
+            send_recipe_with_buttons(message.chat.id, meal, is_fav)
+        else:
+            markup = create_recipe_list_keyboard(recipes, "recipe")
+            bot.send_message(
+                message.chat.id,
+                f"🔍 Найдено рецептов: *{len(recipes)}*\n\n"
+                "Выберите рецепт:",
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
+        
+        logger.info(f"Found {len(recipes)} recipes")
+    except Exception as e:
+        logger.error(f"Error searching recipes: {e}")
+        bot.reply_to(message, f"Ошибка при поиске: {str(e)}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("cat_"))
+def handle_category(call):
+    category = call.data.replace("cat_", "")
+    logger.info(f"User {call.from_user.id} selected category: {category}")
+    
+    try:
+        bot.answer_callback_query(call.id, f"Загружаю {category}...")
+        recipes = get_recipes_by_category(category)
+        
+        if recipes:
+            markup = create_recipe_list_keyboard(recipes, "recipe")
+            bot.send_message(
+                call.message.chat.id,
+                f"📂 *{category}* ({len(recipes)} рецептов)\n\n"
+                "Выберите рецепт:",
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
+        else:
+            bot.send_message(call.message.chat.id, "Рецепты не найдены 😿")
+    except Exception as e:
+        logger.error(f"Error getting recipes by category: {e}")
+        bot.answer_callback_query(call.id, "Ошибка при загрузке", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("area_"))
+def handle_area(call):
+    area = call.data.replace("area_", "")
+    logger.info(f"User {call.from_user.id} selected area: {area}")
+    
+    try:
+        bot.answer_callback_query(call.id, f"Загружаю {area}...")
+        recipes = get_recipes_by_area(area)
+        
+        if recipes:
+            markup = create_recipe_list_keyboard(recipes, "recipe")
+            bot.send_message(
+                call.message.chat.id,
+                f"🌍 *{area}* ({len(recipes)} рецептов)\n\n"
+                "Выберите рецепт:",
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
+        else:
+            bot.send_message(call.message.chat.id, "Рецепты не найдены 😿")
+    except Exception as e:
+        logger.error(f"Error getting recipes by area: {e}")
+        bot.answer_callback_query(call.id, "Ошибка при загрузке", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("recipe_"))
+def show_recipe_details(call):
+    meal_id = call.data.replace("recipe_", "")
+    logger.info(f"User {call.from_user.id} selected recipe: {meal_id}")
+    
+    try:
+        bot.answer_callback_query(call.id)
+        meal = get_recipe_by_id(meal_id)
+        
+        if meal:
+            is_fav = db.is_favorite(call.from_user.id, meal["idMeal"])
+            send_recipe_with_buttons(call.message.chat.id, meal, is_fav)
+        else:
+            bot.send_message(call.message.chat.id, "Рецепт не найден 😿")
+    except Exception as e:
+        logger.error(f"Error showing recipe details: {e}")
+        bot.answer_callback_query(call.id, "Ошибка при загрузке", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("fav_"))
+def add_to_favorites(call):
+    meal_id = call.data.replace("fav_", "")
+    logger.info(f"User {call.from_user.id} adding to favorites: {meal_id}")
+    
+    try:
+        meal = get_recipe_by_id(meal_id)
+        
+        if meal:
+            success = db.add_favorite(
+                call.from_user.id,
+                meal["idMeal"],
+                meal["strMeal"],
+                meal["strMealThumb"]
+            )
+            
+            if success:
+                bot.answer_callback_query(call.id, "✅ Добавлено в избранное!", show_alert=True)
+                
+                new_markup = create_recipe_buttons(meal_id, is_favorite=True)
+                bot.edit_message_reply_markup(
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=new_markup
+                )
+                logger.info("Recipe added to favorites")
+            else:
+                bot.answer_callback_query(call.id, "⚠️ Рецепт уже в избранном", show_alert=True)
+        else:
+            bot.answer_callback_query(call.id, "Ошибка при добавлении", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error adding to favorites: {e}")
+        bot.answer_callback_query(call.id, "Ошибка", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("remove_"))
+def remove_from_favorites(call):
+    meal_id = call.data.replace("remove_", "")
+    logger.info(f"User {call.from_user.id} removing from favorites: {meal_id}")
+    
+    try:
+        success = db.remove_favorite(call.from_user.id, meal_id)
+        
+        if success:
+            bot.answer_callback_query(call.id, "🗑️ Удалено из избранного", show_alert=True)
+            
+            try:
+                new_markup = create_recipe_buttons(meal_id, is_favorite=False)
+                bot.edit_message_reply_markup(
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=new_markup
+                )
+            except:
+                pass
+            
+            logger.info("Recipe removed from favorites")
+        else:
+            bot.answer_callback_query(call.id, "⚠️ Рецепт не найден в избранном", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error removing from favorites: {e}")
+        bot.answer_callback_query(call.id, "Ошибка", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "random")
+def send_another_random(call):
+    logger.info(f"User {call.from_user.id} requested another random recipe")
+    try:
+        bot.answer_callback_query(call.id, "Загружаю новый рецепт...")
+        meal = get_random_recipe()
+        
+        if meal:
+            is_fav = db.is_favorite(call.from_user.id, meal["idMeal"])
+            send_recipe_with_buttons(call.message.chat.id, meal, is_fav)
+        else:
+            bot.answer_callback_query(call.id, "Ошибка при загрузке", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error getting another random recipe: {e}")
+        bot.answer_callback_query(call.id, "Ошибка", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "back_to_favorites")
+def back_to_favorites(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        call.message.chat.id,
+        "⭐ Используйте кнопку '📋 Показать избранное' для просмотра"
+    )
 
 
 if __name__ == "__main__":
