@@ -28,6 +28,28 @@ logger.info("Bot initialized successfully")
 PRIVET_RE = re.compile(r"(?i)\bпривет\b")
 
 
+def translate_to_russian(text):
+    """Переводит текст на русский язык через бесплатный API"""
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": "en",
+            "tl": "ru",
+            "dt": "t",
+            "q": text
+        }
+        response = requests.get(url, params=params, timeout=5)
+        if response.status_code == 200:
+            result = response.json()
+            translated = result[0][0][0]
+            return translated
+        return text
+    except Exception as e:
+        logger.warning(f"Translation failed: {e}")
+        return text
+
+
 def create_main_menu():
     """Создает главное меню с кнопками"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -108,7 +130,9 @@ def send_cat_fact(message):
         data = response.json()
         
         if "fact" in data:
-            bot.reply_to(message, f"💭 Факт о кошках:\n\n{data['fact']}")
+            fact_en = data['fact']
+            fact_ru = translate_to_russian(fact_en)
+            bot.reply_to(message, f"💭 Факт о кошках:\n\n{fact_ru}")
             logger.info("Cat fact sent successfully")
         else:
             bot.reply_to(message, "Не удалось получить факт 😿")
@@ -128,8 +152,9 @@ def send_dog_fact(message):
         data = response.json()
         
         if "data" in data and len(data["data"]) > 0:
-            fact = data["data"][0]["attributes"]["body"]
-            bot.reply_to(message, f"🐶 Факт о собаках:\n\n{fact}")
+            fact_en = data["data"][0]["attributes"]["body"]
+            fact_ru = translate_to_russian(fact_en)
+            bot.reply_to(message, f"🐶 Факт о собаках:\n\n{fact_ru}")
             logger.info("Dog fact sent successfully")
         else:
             bot.reply_to(message, "Не удалось получить факт 🐕")
