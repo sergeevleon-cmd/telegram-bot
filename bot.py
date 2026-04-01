@@ -6,22 +6,34 @@ from logging.handlers import RotatingFileHandler
 
 import telebot
 from telebot import types
+from telebot import apihelper
 from dotenv import load_dotenv
 
 os.makedirs("logs", exist_ok=True)
 
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter(
+    '%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
+)
+console_handler.setFormatter(console_formatter)
+
+file_handler = RotatingFileHandler(
+    "logs/bot.log",
+    maxBytes=5*1024*1024,
+    backupCount=3,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+file_formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+file_handler.setFormatter(file_formatter)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        RotatingFileHandler(
-            "logs/bot.log",
-            maxBytes=5*1024*1024,
-            backupCount=3,
-            encoding='utf-8'
-        )
-    ]
+    handlers=[console_handler, file_handler]
 )
 logger = logging.getLogger(__name__)
 
@@ -32,6 +44,13 @@ if not BOT_TOKEN:
     raise RuntimeError(
         "Не найден BOT_TOKEN. Создайте файл .env (или переменную окружения) по примеру .env.example."
     )
+
+PROXY = os.getenv("PROXY_URL") or os.getenv("PROXY")
+if PROXY:
+    apihelper.proxy = {'http': PROXY, 'https': PROXY}
+    logger.info(f"Using proxy: {PROXY}")
+else:
+    logger.info("No proxy configured")
 
 logger.info("Initializing bot...")
 bot = telebot.TeleBot(BOT_TOKEN)
