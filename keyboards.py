@@ -65,22 +65,28 @@ def create_recipe_buttons(meal_id, is_favorite=False, rating=0):
     """Создает inline кнопки под рецептом с рейтингом в одну строку"""
     markup = types.InlineKeyboardMarkup()
     
-    if is_favorite:
-        rating_buttons = []
-        for r in range(1, 6):
-            if r <= rating:
-                label = "⭐"
-            else:
-                label = "☆"
-            
+    rating_buttons = []
+    for r in range(1, 6):
+        if r <= rating:
+            label = "⭐"
+        else:
+            label = "☆"
+        
+        if is_favorite:
             btn = types.InlineKeyboardButton(
                 label,
                 callback_data=f"rate_{meal_id}_{r}"
             )
-            rating_buttons.append(btn)
-        
-        markup.row(*rating_buttons)
-        
+        else:
+            btn = types.InlineKeyboardButton(
+                label,
+                callback_data=f"fav_rate_{meal_id}_{r}"
+            )
+        rating_buttons.append(btn)
+    
+    markup.row(*rating_buttons)
+    
+    if is_favorite:
         btn1 = types.InlineKeyboardButton("🗑️ Удалить", callback_data=f"remove_{meal_id}")
         btn2 = types.InlineKeyboardButton("🔄 Еще рецепт", callback_data="random")
         markup.row(btn1, btn2)

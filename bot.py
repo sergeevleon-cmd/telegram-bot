@@ -463,7 +463,52 @@ def show_recipe_details(call):
         bot.answer_callback_query(call.id, "Ошибка при загрузке", show_alert=True)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("fav_"))
+@bot.callback_query_handler(func=lambda call: call.data.startswith("fav_rate_"))
+def add_to_favorites_with_rating(call):
+    parts = call.data.split("_")
+    meal_id = parts[2]
+    rating = int(parts[3])
+    logger.info(f"User {call.from_user.id} adding to favorites with rating {rating}: {meal_id}")
+    
+    try:
+        meal = get_recipe_by_id(meal_id)
+        
+        if meal:
+            meal_name_ru = translate_to_russian(meal["strMeal"])
+            success = db.add_favorite(
+                call.from_user.id,
+                meal["idMeal"],
+                meal_name_ru,
+                meal["strMealThumb"]
+            )
+            
+            if success:
+                db.set_rating(call.from_user.id, meal_id, rating)
+                filled = "⭐" * rating
+                empty = "☆" * (5 - rating)
+                bot.answer_callback_query(call.id, f"✅ Добавлено с оценкой {filled}{empty}!")
+                
+                new_markup = create_recipe_buttons(meal_id, is_favorite=True, rating=rating)
+                try:
+                    bot.edit_message_reply_markup(
+                        call.message.chat.id,
+                        call.message.message_id,
+                        reply_markup=new_markup
+                    )
+                except:
+                    pass
+                
+                logger.info(f"Recipe added to favorites with rating {rating}")
+            else:
+                bot.answer_callback_query(call.id, "⚠️ Рецепт уже в избранном", show_alert=True)
+        else:
+            bot.answer_callback_query(call.id, "Ошибка при добавлении", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error adding to favorites with rating: {e}")
+        bot.answer_callback_query(call.id, "Ошибка", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("fav_") and not call.data.startswith("fav_rate_"))
 def add_to_favorites(call):
     meal_id = call.data.replace("fav_", "")
     logger.info(f"User {call.from_user.id} adding to favorites: {meal_id}")
